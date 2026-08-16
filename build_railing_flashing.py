@@ -1,28 +1,34 @@
 #!/usr/bin/env python3
 """
-Regenerates the COLORS array in railing_flashing_vote.html from paired photos.
+Regenerates the COLORS array in railing_flashing_vote.html from paired photos
+in hoa_paint_options/, named like:
+
+  option01_front_soft-warm-light-gray-railing_light-warm-greige-flashing.jpg
+  option01_roof_soft-warm-light-gray-railing_light-warm-greige-flashing.jpg
+
+i.e. optionNN_<front|roof>_<railing-color-desc>-railing_<flashing-color-desc>-flashing.jpg
 
 Usage:
-  1. Put the front-of-building renderings in photos/front/, and the matching
-     roof-deck renderings in photos/deck/, using the SAME filename in both
-     folders for a given color (e.g. photos/front/Charcoal.jpg and
-     photos/deck/Charcoal.jpg are treated as one color option: "Charcoal").
+  1. Drop matching front/roof photo pairs into hoa_paint_options/ using that
+     naming pattern (front and roof filenames must share the same option
+     number and description).
   2. Run: python3 build_railing_flashing.py
   3. Commit + push railing_flashing_vote.html.
-
-Labels are derived from the filename (underscores -> spaces, title-cased).
 """
-import base64, os, re, json, subprocess, tempfile, shutil, sys
+import base64, os, re, json, subprocess, tempfile, sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-FRONT_DIR = os.path.join(ROOT, "photos", "front")
-DECK_DIR = os.path.join(ROOT, "photos", "deck")
+SRC_DIR = os.path.join(ROOT, "hoa_paint_options")
 HTML_PATH = os.path.join(ROOT, "railing_flashing_vote.html")
 MAX_WIDTH = 900
 JPEG_QUALITY = 70
 
-def label_for(stem):
-    return re.sub(r"[_\-]+", " ", stem).strip().title()
+FNAME_RE = re.compile(
+    r"^(option\d+)_(front|roof)_(.+)-railing_(.+)-flashing\.jpe?g$", re.IGNORECASE
+)
+
+def titleize(desc):
+    return re.sub(r"[_\-]+", " ", desc).strip().title()
 
 def resize_and_encode(path, tmpdir):
     base = os.path.basename(path)
@@ -37,32 +43,39 @@ def resize_and_encode(path, tmpdir):
     return "data:image/jpeg;base64," + b64
 
 def main():
-    if not os.path.isdir(FRONT_DIR) or not os.path.isdir(DECK_DIR):
-        sys.exit(f"Missing photos/front or photos/deck under {ROOT}")
+    if not os.path.isdir(SRC_DIR):
+        sys.exit(f"Missing {SRC_DIR}")
 
-    front_files = {os.path.splitext(f)[0]: f for f in os.listdir(FRONT_DIR) if not f.startswith(".")}
-    deck_files = {os.path.splitext(f)[0]: f for f in os.listdir(DECK_DIR) if not f.startswith(".")}
-
-    stems = sorted(set(front_files) & set(deck_files))
-    missing_deck = sorted(set(front_files) - set(deck_files))
-    missing_front = sorted(set(deck_files) - set(front_files))
-    if missing_deck:
-        print("WARNING: no deck match for:", missing_deck)
-    if missing_front:
-        print("WARNING: no front match for:", missing_front)
-    if not stems:
-        sys.exit("No matching front/deck filename pairs found.")
+    options = {}  # option_id -> {"front": path, "roof": path, "railing": ..., "flashing": ...}
+    for fname in sorted(os.listdir(SRC_DIR)):
+        m = FNAME_RE.match(fname)
+        if not m:
+            if not fname.startswith("."):
+                print("SKIP (doesn't match naming pattern):", fname)
+            continue
+        opt_id, view, railing_desc, flashing_desc = m.groups()
+        entry = options.setdefault(opt_id, {})
+        entry[view.lower()] = os.path.join(SRC_DIR, fname)
+        entry["railing"] = titleize(railing_desc)
+        entry["flashing"] = titleize(flashing_desc)
 
     entries = []
     with tempfile.TemporaryDirectory() as tmpdir:
-        for stem in stems:
-            front_src = resize_and_encode(os.path.join(FRONT_DIR, front_files[stem]), tmpdir)
-            deck_src = resize_and_encode(os.path.join(DECK_DIR, deck_files[stem]), tmpdir)
-            label = label_for(stem)
+        for opt_id in sorted(options, key=lambda k: int(re.sub(r"\D", "", k))):
+            data = options[opt_id]
+            if "front" not in data or "roof" not in data:
+                print(f"WARNING: {opt_id} missing front or roof photo, skipping")
+                continue
+            src_front = resize_and_encode(data["front"], tmpdir)
+            src_deck = resize_and_encode(data["roof"], tmpdir)
+            label = f"{data['railing']} Railing / {data['flashing']} Flashing"
             obj = "  {id:%s,label:%s,srcFront:%s,srcDeck:%s}" % (
-                json.dumps(stem), json.dumps(label), json.dumps(front_src), json.dumps(deck_src)
+                json.dumps(opt_id), json.dumps(label), json.dumps(src_front), json.dumps(src_deck)
             )
             entries.append(obj)
+
+    if not entries:
+        sys.exit("No complete front/roof pairs found.")
 
     colors_js = "const COLORS = [\n" + ",\n".join(entries) + "\n];"
 

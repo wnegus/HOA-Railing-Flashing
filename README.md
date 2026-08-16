@@ -7,11 +7,22 @@ photos.
 
 ## Adding/updating photos
 
-1. Drop the front-of-building rendering for a color into `photos/front/`,
-   and the matching roof-deck rendering into `photos/deck/`, using the
-   **same filename** in both folders (e.g. `photos/front/Charcoal.jpg` and
-   `photos/deck/Charcoal.jpg`).
-2. Run `python3 build_railing_flashing.py` — it resizes/compresses the
+Drop photo pairs into `hoa_paint_options/` (not tracked by git — the images
+end up embedded as base64 in the HTML instead) named like:
+
+```
+optionNN_front_<railing-color-desc>-railing_<flashing-color-desc>-flashing.jpg
+optionNN_roof_<railing-color-desc>-railing_<flashing-color-desc>-flashing.jpg
+```
+
+e.g. `option01_front_soft-warm-light-gray-railing_light-warm-greige-flashing.jpg`
+and the matching `option01_roof_...jpg`. The `front`/`roof` pair sharing the
+same `optionNN` and description is treated as one color option; the label
+shown to voters is generated from the railing/flashing description text.
+
+Then:
+
+1. Run `python3 build_railing_flashing.py` — it resizes/compresses the
    images, base64-embeds them, and rewrites the `COLORS` array in
    `railing_flashing_vote.html`.
-3. Commit and push. Netlify will redeploy automatically.
+2. Commit and push. Netlify will redeploy automatically.

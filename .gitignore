@@ -1,0 +1,4 @@
+# Raw source photos are large and already embedded as base64 in the HTML by
+# build_railing_flashing.py — no need to duplicate them in git history.
+/hoa_paint_options/
+.DS_Store
